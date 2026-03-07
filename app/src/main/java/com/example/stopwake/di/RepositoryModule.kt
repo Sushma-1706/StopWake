@@ -2,7 +2,9 @@ package com.example.stopwake.di
 
 import com.example.stopwake.data.repository.AuthRepositoryImpl
 import com.example.stopwake.data.repository.StopRepositoryImpl
+import com.example.stopwake.data.repository.HistoryRepositoryImpl
 import com.example.stopwake.domain.repository.AuthRepository
+import com.example.stopwake.domain.repository.HistoryRepository
 import com.example.stopwake.domain.repository.StopRepository
 import dagger.Binds
 import dagger.Module
@@ -25,4 +27,9 @@ abstract class RepositoryModule {
     abstract fun bindAuthRepository(
         authRepositoryImpl: AuthRepositoryImpl
     ): AuthRepository
+    @Binds
+    @Singleton
+    abstract fun bindHistoryRepository(
+        historyRepositoryImpl: HistoryRepositoryImpl
+    ): HistoryRepository
 }

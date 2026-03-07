@@ -1,6 +1,5 @@
 package com.example.stopwake.ui.alerts
 
-import android.location.Location
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -35,9 +34,15 @@ fun MyAlertsScreen(viewModel: HomeViewModel = hiltViewModel(), navController: Na
     var selectedStop by remember { mutableStateOf<StopEntity?>(null) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var stopToDelete by remember { mutableStateOf<StopEntity?>(null) }
-    var sortBy by remember { mutableStateOf("name") } // name, distance, date
+    var sortBy by remember { mutableStateOf("name") } // name, date
     var showSortMenu by remember { mutableStateOf(false) }
-
+    
+     val sortedStops = remember(stops, sortBy) {
+        when (sortBy) {
+            "date" -> stops.sortedByDescending { it.createdAt }
+            else -> stops.sortedBy { it.name.lowercase() }
+        }
+    }
     Scaffold(
         containerColor = Color(0xFF1A1A2E),
         topBar = {
@@ -64,9 +69,9 @@ fun MyAlertsScreen(viewModel: HomeViewModel = hiltViewModel(), navController: Na
                         fontWeight = FontWeight.Bold
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (stops.isNotEmpty()) {
+                        if (sortedStops.isNotEmpty()) {
                             Text(
-                                "${stops.size}",
+                                 "${sortedStops.size}",
                                 color = Color(0xFF27AE60),
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold
@@ -93,9 +98,9 @@ fun MyAlertsScreen(viewModel: HomeViewModel = hiltViewModel(), navController: Na
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Sort by Distance", color = Color.White) },
+                                 text = { Text("Sort by Date", color = Color.White) },
                                 onClick = {
-                                    sortBy = "distance"
+                                    sortBy = "date"
                                     showSortMenu = false
                                 }
                             )
@@ -108,7 +113,7 @@ fun MyAlertsScreen(viewModel: HomeViewModel = hiltViewModel(), navController: Na
             StopWakeBottomNavigation(navController = navController) 
         }
     ) { padding ->
-        if (stops.isEmpty()) {
+       if (sortedStops.isEmpty()) {
             Box(
                 modifier = Modifier
                     .padding(padding)
@@ -149,7 +154,7 @@ fun MyAlertsScreen(viewModel: HomeViewModel = hiltViewModel(), navController: Na
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item { Spacer(modifier = Modifier.height(4.dp)) }
-                items(stops, key = { it.id }) { stop ->
+                items(sortedStops, key = { it.id }) { stop ->
                     SwipeableAlertCard(
                         stop = stop,
                         onEdit = { selectedStop = stop },

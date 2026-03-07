@@ -13,9 +13,11 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.example.stopwake.R
-import com.example.stopwake.ui.alarm.AlarmActivity
+import com.example.stopwake.data.local.entity.HistoryEntity
 import com.example.stopwake.domain.location.LocationClient
+import com.example.stopwake.domain.repository.HistoryRepository
 import com.example.stopwake.domain.repository.StopRepository
+import com.example.stopwake.ui.alarm.AlarmActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +26,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -35,8 +38,11 @@ class StopWakeService : Service() {
     @Inject
     lateinit var repository: StopRepository
 
+    @Inject
+    lateinit var historyRepository: HistoryRepository
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var notificationManager: NotificationManager
+    private val triggeredStopIds = mutableSetOf<Long>()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -77,8 +83,10 @@ class StopWakeService : Service() {
         repository.getActiveStops()
             .onEach { stops ->
                 activeStops = stops
+                triggeredStopIds.retainAll(stops.map { it.id }.toSet())
                 if (stops.isEmpty()) {
-                    updateNotification("Tracking active. No active stops.")
+                    updateNotification("Tracking stopped. No active stops.")
+                    stop()
                 } else {
                     updateNotification("Tracking active. Monitoring ${stops.size} stops.")
                 }
@@ -95,55 +103,73 @@ class StopWakeService : Service() {
     }
 
     private fun checkStops(location: Location) {
-         val stops = activeStops 
-         stops.forEach { stop ->
-             val results = FloatArray(1)
-             Location.distanceBetween(
-                 location.latitude,
-                 location.longitude,
-                 stop.latitude,
-                 stop.longitude,
-                 results
-             )
-             val distanceInMeters = results[0]
-             
-             // Use effective radius based on alert type
-             val effectiveRadius = stop.getEffectiveRadius()
-             
-             if (distanceInMeters <= effectiveRadius) {
-                 triggerAlarm(stop)
-             }
-         }
-         
-         // Optional: meaningful notification update logic here finding the closest stop
-         if (stops.isNotEmpty()) {
+          val stops = activeStops
+        stops.forEach { stop ->
+            if (triggeredStopIds.contains(stop.id)) {
+                return@forEach
+            }
+
+            val results = FloatArray(1)
+            Location.distanceBetween(
+                location.latitude,
+                location.longitude,
+                stop.latitude,
+                stop.longitude,
+                results
+            )
+            val distanceInMeters = results[0]
+            val effectiveRadius = stop.getEffectiveRadius()
+
+            if (distanceInMeters <= effectiveRadius) {
+                triggeredStopIds.add(stop.id)
+                triggerAlarm(stop)
+            }
+        }
+
+        if (stops.isNotEmpty()) {
+            val closest = stops.minByOrNull {
              // find closest
-             val closest = stops.minByOrNull { 
                 val r = FloatArray(1)
                 Location.distanceBetween(location.latitude, location.longitude, it.latitude, it.longitude, r)
-                r[0]
-             }
-             closest?.let {
-                 val r = FloatArray(1)
-                 Location.distanceBetween(location.latitude, location.longitude, it.latitude, it.longitude, r)
-                 val alertTypeDisplay = it.getAlertTypeEnum().name.replace("_", " ")
-                 updateNotification("Nearest: ${it.name} (${r[0].toInt()}m) - $alertTypeDisplay")
-             }
-         }
-     }
+            }
+            closest?.let {
+                val r = FloatArray(1)
+                Location.distanceBetween(location.latitude, location.longitude, it.latitude, it.longitude, r)
+                val alertTypeDisplay = it.getAlertTypeEnum().name.replace("_", " ")
+                updateNotification("Nearest: ${it.name} (${r[0].toInt()}m) - $alertTypeDisplay")
+            }
+        }
+    }
 
     private fun triggerAlarm(stop: com.example.stopwake.data.local.entity.StopEntity) {
         // Open AlarmActivity
         val intent = Intent(applicationContext, AlarmActivity::class.java).apply { 
              flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-             putExtra("STOP_ID", stop.id)
-        }
+            putExtra("STOP_ID", stop.id)
+            putExtra("STOP_NAME", stop.name)
         startActivity(intent)
         
-        // Send SMS if contact is present
+        serviceScope.launch {
+            repository.updateStop(
+                stop.copy(
+                    isActive = false,
+                    triggeredAt = System.currentTimeMillis()
+                )
+            )
+            historyRepository.insertHistory(
+                HistoryEntity(
+                    stopName = stop.name,
+                    latitude = stop.latitude,
+                    longitude = stop.longitude,
+                    alertType = stop.alertType,
+                    triggeredAt = System.currentTimeMillis(),
+                    userId = stop.userId
+                )
+            )
+        }
         stop.contactNumber?.let { number ->
             if (number.isNotBlank()) {
-                 sendSMS(number, stop.alertMessage ?: "I have reached my stop: ${stop.name}")
+                sendSMS(number, stop.alertMessage ?: "I have reached my stop: ${stop.name}")
             }
         }
     }
