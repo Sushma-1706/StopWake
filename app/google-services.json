@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "643299503349",
+    "project_id": "stopawake-9afa2",
+    "storage_bucket": "stopawake-9afa2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:643299503349:android:b737fcfef0e55fd17fa9bc",
+        "android_client_info": {
+          "package_name": "com.example.stopwake"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDT6cnDM5pdsZocYD1gcWIOpU1pF_wIMkU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
