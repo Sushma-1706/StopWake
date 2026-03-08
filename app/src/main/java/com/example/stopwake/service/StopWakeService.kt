@@ -14,6 +14,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import com.example.stopwake.R
 import com.example.stopwake.data.local.entity.HistoryEntity
+import com.example.stopwake.data.local.entity.StopEntity
 import com.example.stopwake.domain.location.LocationClient
 import com.example.stopwake.domain.repository.HistoryRepository
 import com.example.stopwake.domain.repository.StopRepository
@@ -43,6 +44,9 @@ class StopWakeService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private lateinit var notificationManager: NotificationManager
     private val triggeredStopIds = mutableSetOf<Long>()
+    private val lastDistancesByStopId = mutableMapOf<Long, Float>()
+    private var activeStops: List<StopEntity> = emptyList()
+
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -76,14 +80,16 @@ class StopWakeService : Service() {
         startLocationTracking()
     }
 
-    private var activeStops: List<com.example.stopwake.data.local.entity.StopEntity> = emptyList()
+
 
     private fun startLocationTracking() {
         // 1. Observe active stops continuously in a separate job
         repository.getActiveStops()
             .onEach { stops ->
                 activeStops = stops
-                triggeredStopIds.retainAll(stops.map { it.id }.toSet())
+                val activeStopIds = stops.map { it.id }.toSet()
+                triggeredStopIds.retainAll(activeStopIds)
+                lastDistancesByStopId.keys.retainAll(activeStopIds)
                 if (stops.isEmpty()) {
                     updateNotification("Tracking stopped. No active stops.")
                     stop()
@@ -96,14 +102,12 @@ class StopWakeService : Service() {
         // 2. Observe location and check against the latest activeStops
         locationClient.getLocationUpdates(5000L)
             .catch { e -> e.printStackTrace() }
-            .onEach { location ->
-                checkStops(location)
-            }
+            .onEach { location -> checkStops(location) }
             .launchIn(serviceScope)
     }
 
     private fun checkStops(location: Location) {
-          val stops = activeStops
+        val stops = activeStops
         stops.forEach { stop ->
             if (triggeredStopIds.contains(stop.id)) {
                 return@forEach
@@ -120,33 +124,56 @@ class StopWakeService : Service() {
             val distanceInMeters = results[0]
             val effectiveRadius = stop.getEffectiveRadius()
 
-            if (distanceInMeters <= effectiveRadius) {
+            if (shouldTrigger(stop, distanceInMeters, effectiveRadius)) {
                 triggeredStopIds.add(stop.id)
                 triggerAlarm(stop)
             }
         }
 
         if (stops.isNotEmpty()) {
-            val closest = stops.minByOrNull {
-             // find closest
-                val r = FloatArray(1)
-                Location.distanceBetween(location.latitude, location.longitude, it.latitude, it.longitude, r)
+            val closest = stops.minByOrNull { stop ->
+                val results = FloatArray(1)
+                Location.distanceBetween(
+                    location.latitude,
+                    location.longitude,
+                    stop.latitude,
+                    stop.longitude,
+                    results
+                )
+                results[0]
             }
             closest?.let {
-                val r = FloatArray(1)
-                Location.distanceBetween(location.latitude, location.longitude, it.latitude, it.longitude, r)
+                val results = FloatArray(1)
+                Location.distanceBetween(
+                    location.latitude,
+                    location.longitude,
+                    it.latitude,
+                    it.longitude,
+                    results
+                )
                 val alertTypeDisplay = it.getAlertTypeEnum().name.replace("_", " ")
-                updateNotification("Nearest: ${it.name} (${r[0].toInt()}m) - $alertTypeDisplay")
+                updateNotification("Nearest: ${it.name} (${results[0].toInt()}m) - $alertTypeDisplay")
             }
         }
     }
 
-    private fun triggerAlarm(stop: com.example.stopwake.data.local.entity.StopEntity) {
-        // Open AlarmActivity
-        val intent = Intent(applicationContext, AlarmActivity::class.java).apply { 
-             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+    private fun shouldTrigger(stop: StopEntity, distanceInMeters: Float, effectiveRadius: Float): Boolean {
+        val previousDistance = lastDistancesByStopId[stop.id]
+        lastDistancesByStopId[stop.id] = distanceInMeters
+
+        if (distanceInMeters > effectiveRadius) {
+            return false
+        }
+
+        return previousDistance == null || previousDistance > effectiveRadius
+    }
+
+    private fun triggerAlarm(stop: StopEntity) {
+        val intent = Intent(applicationContext, AlarmActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("STOP_ID", stop.id)
             putExtra("STOP_NAME", stop.name)
+        }
         startActivity(intent)
         
         serviceScope.launch {
@@ -191,8 +218,8 @@ class StopWakeService : Service() {
     }
 
     private fun stop() {
-        stopForeground(true)
-        stopSelf()
+        triggeredStopIds.clear()
+        lastDistancesByStopId.clear()
     }
 
     override fun onDestroy() {

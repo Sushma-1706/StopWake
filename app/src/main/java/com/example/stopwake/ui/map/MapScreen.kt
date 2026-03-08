@@ -328,7 +328,14 @@ fun SaveAlertDialog(
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                // Alert Type Dropdown
+                // Alert timing selection
+                Text(
+                    "When should alarm ring?",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 ExposedDropdownMenuBox(
                     expanded = expanded,
                     onExpandedChange = { expanded = !expanded }
@@ -337,7 +344,7 @@ fun SaveAlertDialog(
                         value = selectedAlertType.second,
                         onValueChange = {},
                         readOnly = true,
-                        label = { Text("Alert Type", color = Color.Gray) },
+                        label = { Text("Alert Timing", color = Color.Gray) },
                         trailingIcon = {
                             Icon(
                                 if (expanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown,

@@ -85,7 +85,6 @@ class HomeViewModel @Inject constructor(
                 )
 
                 startTracking()
-                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }

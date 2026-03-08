@@ -3,6 +3,7 @@ package com.example.stopwake.ui.map
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.stopwake.domain.location.LocationClient
 import com.example.stopwake.domain.repository.StopRepository
